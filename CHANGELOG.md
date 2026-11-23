@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.7.1] — 2026-11-24
+
+### Fixed
+- A photo selected in Notes was gisted as a 3-byte `snippet.txt` (the U+FFFC attachment placeholder). Notes puts no image types on the service pasteboard — only flat RTFD with the photo embedded as an attachment — so the image branch now unpacks RTFD attachments and normalizes each one (PNG/JPEG/GIF/WebP pass through, HEIC/HEIF→JPEG, other decodable formats→PNG, undecodable skipped). Selecting several photos gists them all together.
+
 ## [v0.7.0] — 2026-11-24
 
 ### Added
