@@ -3,6 +3,14 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.7.0] — 2026-11-24
+
+### Added
+- `public.heic`/`public.heif` in the service's send types, so "Copy to Gist" appears for HEIC-only selections.
+
+### Changed
+- **HEIC is never served.** A `.heic`/`.heif` file shared from Finder is transcoded to JPEG (ImageIO, quality 0.9, metadata and orientation kept) into the gist's temp dir instead of being served in place; "Download all" bundles the JPEG. HEIC pasteboard data converts to JPEG the same way (previously it fell through the `NSImage` fallback and became an oversized PNG). Rationale: only Safari can decode HEIC, so other browsers showed a broken inline image. Folder zips are untouched.
+
 ## [v0.6.0] — 2026-11-23
 
 ### Added
