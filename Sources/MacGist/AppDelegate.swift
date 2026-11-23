@@ -208,8 +208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let meaningful = text.unicodeScalars.contains {
             !CharacterSet.whitespacesAndNewlines.contains($0) && $0 != "\u{FFFC}"
         }
-        if !meaningful, let image = imageFile(from: pboard) {
-            share(image: image)
+        let images = meaningful ? [] : imageFiles(from: pboard)
+        if !images.isEmpty {
+            share(images: images)
         } else if !text.isEmpty {
             share(text: text)
         } else {
@@ -218,28 +219,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         return true
     }
 
-    /// PNG and JPEG pass through as-is; anything else (TIFF from Notes, PDF-backed
-    /// images) is converted to PNG.
-    private func imageFile(from pboard: NSPasteboard) -> GistBuilder.DataFile? {
+    /// PNG and JPEG pass through as-is; HEIC becomes JPEG; anything else
+    /// (TIFF, PDF-backed images) is converted to PNG.
+    private func imageFiles(from pboard: NSPasteboard) -> [GistBuilder.DataFile] {
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
         let stamp = df.string(from: Date())
         if let d = pboard.data(forType: .png) {
-            return .init(name: "Image \(stamp).png", data: d)
+            return [.init(name: "Image \(stamp).png", data: d)]
         }
         if let d = pboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) {
-            return .init(name: "Image \(stamp).jpg", data: d)
+            return [.init(name: "Image \(stamp).jpg", data: d)]
         }
         for heic in ["public.heic", "public.heif"] {
             if let d = pboard.data(forType: NSPasteboard.PasteboardType(heic)),
                let jpg = GistBuilder.jpegData(fromImageData: d) {
-                return .init(name: "Image \(stamp).jpg", data: jpg)
+                return [.init(name: "Image \(stamp).jpg", data: jpg)]
             }
+        }
+        // A Notes photo selection carries no image types at all: only flat
+        // RTFD with the photo as an embedded attachment.
+        if let d = pboard.data(forType: .rtfd) {
+            let attached = Self.rtfdImages(from: d)
+            if !attached.isEmpty { return attached }
         }
         let tiff = pboard.data(forType: .tiff) ?? NSImage(pasteboard: pboard)?.tiffRepresentation
         guard let tiff, let rep = NSBitmapImageRep(data: tiff),
-              let png = rep.representation(using: .png, properties: [:]) else { return nil }
-        return .init(name: "Image \(stamp).png", data: png)
+              let png = rep.representation(using: .png, properties: [:]) else { return [] }
+        return [.init(name: "Image \(stamp).png", data: png)]
+    }
+
+    /// Image attachments inside a flat-RTFD archive (what Notes puts on the
+    /// pasteboard for a photo selection), normalized for the browser.
+    static func rtfdImages(from data: Data) -> [GistBuilder.DataFile] {
+        guard let attr = try? NSAttributedString(data: data,
+                                                 options: [.documentType: NSAttributedString.DocumentType.rtfd],
+                                                 documentAttributes: nil) else { return [] }
+        var out: [GistBuilder.DataFile] = []
+        attr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attr.length)) { value, _, _ in
+            guard let a = value as? NSTextAttachment, let fw = a.fileWrapper, fw.isRegularFile,
+                  let bytes = fw.regularFileContents, !bytes.isEmpty,
+                  let file = GistBuilder.normalizedImageFile(name: fw.preferredFilename ?? fw.filename ?? "image", data: bytes)
+            else { return }
+            out.append(file)
+        }
+        return out
     }
 
     // MARK: - Sharing
@@ -259,8 +283,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         finish(Result { try builder.build(snippets: [.init(name: "snippet.txt", text: text)], baseURL: baseURL) })
     }
 
-    private func share(image: GistBuilder.DataFile) {
-        finish(Result { try builder.build(dataFiles: [image], baseURL: baseURL) })
+    private func share(images: [GistBuilder.DataFile]) {
+        finish(Result { try builder.build(dataFiles: images, baseURL: baseURL) })
     }
 
     private func finish(_ result: Result<Gist, Error>) {

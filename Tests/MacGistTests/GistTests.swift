@@ -106,6 +106,31 @@ import UniformTypeIdentifiers
         #expect(GistBuilder.jpegData(fromImageData: Data("not an image".utf8)) == nil)
     }
 
+    @Test func normalizedImageFiles() throws {
+        // Pass-through formats keep their bytes and name without decoding.
+        let passthrough = Data([0x89, 0x50, 0x4e, 0x47])
+        let kept = try #require(GistBuilder.normalizedImageFile(name: "shot.png", data: passthrough))
+        #expect(kept.name == "shot.png")
+        #expect(kept.data == passthrough)
+
+        // A decodable non-web format (TIFF) becomes PNG.
+        let ctx = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                         space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let image = try #require(ctx.makeImage())
+        let tiffOut = NSMutableData()
+        let dest = try #require(CGImageDestinationCreateWithData(tiffOut, UTType.tiff.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, image, nil)
+        try #require(CGImageDestinationFinalize(dest))
+        let converted = try #require(GistBuilder.normalizedImageFile(name: "scan.tiff", data: tiffOut as Data))
+        #expect(converted.name == "scan.png")
+        #expect(converted.data.prefix(4) == Data([0x89, 0x50, 0x4e, 0x47]))
+
+        // Undecodable bytes are skipped, not shared as junk.
+        #expect(GistBuilder.normalizedImageFile(name: "weird.xyz", data: Data("junk".utf8)) == nil)
+        #expect(GistBuilder.normalizedImageFile(name: "noext", data: Data("junk".utf8)) == nil)
+    }
+
     @Test func duplicateNamesAreUniqued() throws {
         let a = try write("x/a.txt", Data("1".utf8))
         let b = try write("y/a.txt", Data("2".utf8))

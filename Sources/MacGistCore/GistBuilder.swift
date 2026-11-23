@@ -157,13 +157,38 @@ public struct GistBuilder: Sendable {
     /// In-memory variant for pasteboard image data. Returns nil when the data
     /// is not a decodable image.
     public static func jpegData(fromImageData data: Data, quality: Double = 0.9) -> Data? {
+        transcode(data, to: .jpeg, quality: quality)
+    }
+
+    public static func pngData(fromImageData data: Data) -> Data? {
+        transcode(data, to: .png, quality: nil)
+    }
+
+    private static func transcode(_ data: Data, to type: UTType, quality: Double?) -> Data? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else { return nil }
         let out = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImageFromSource(dest, source, 0,
-            [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard let dest = CGImageDestinationCreateWithData(out, type.identifier as CFString, 1, nil) else { return nil }
+        let options = quality.map { [kCGImageDestinationLossyCompressionQuality: $0] as CFDictionary }
+        CGImageDestinationAddImageFromSource(dest, source, 0, options)
         guard CGImageDestinationFinalize(dest) else { return nil }
         return out as Data
+    }
+
+    /// Browser-ready image from raw bytes and a (possibly misleading) name:
+    /// PNG/JPEG/GIF/WebP pass through, HEIC/HEIF become JPEG, anything else
+    /// decodable becomes PNG, anything undecodable is nil.
+    public static func normalizedImageFile(name: String, data: Data) -> DataFile? {
+        let base = (name as NSString).deletingPathExtension
+        switch (name as NSString).pathExtension.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "webp":
+            return DataFile(name: name, data: data)
+        case "heic", "heif":
+            guard let jpg = jpegData(fromImageData: data) else { return nil }
+            return DataFile(name: base + ".jpg", data: jpg)
+        case let ext:
+            guard let png = pngData(fromImageData: data) else { return nil }
+            return DataFile(name: (ext.isEmpty ? name : base) + ".png", data: png)
+        }
     }
 }
 
