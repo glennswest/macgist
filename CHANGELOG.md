@@ -3,10 +3,17 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
-### 2026-11-23
-- **feat:** Gist images straight off the pasteboard: a photo selected in Notes (or any app) via **Services → Copy to Gist**, and copied images via **Copy to Gist from Clipboard**. The service now declares `public.png`/`public.tiff`/`public.jpeg` send types; PNG and JPEG pass through, anything else is converted to PNG. Image bytes live in the gist's temp dir and die with the gist (new `GistBuilder.DataFile`).
-- **build:** Command Line Tools 27.x (installed Nov 18) dropped XCTest and the SwiftUIMacros compiler plugin, which broke every build and test run on this Mac. `build-app.sh` now pins the 26 SDK when the plugin is missing, and the new `scripts/test.sh` runs the suite with the toolchain's Swift Testing macro plugin.
-- **test:** Test suite migrated from XCTest to Swift Testing (38 tests, same coverage plus the new image/data-file test), since XCTest no longer ships with Command Line Tools.
+## [v0.6.0] — 2026-11-23
+
+### Added
+- Gist images straight off the pasteboard: a photo selected in Notes (or any app) via **Services → Copy to Gist**, and copied images via **Copy to Gist from Clipboard**. The service now declares `public.png`/`public.tiff`/`public.jpeg` send types; PNG and JPEG pass through, anything else is converted to PNG. Image bytes live in the gist's temp dir and die with the gist (new `GistBuilder.DataFile`).
+- `scripts/test.sh`: runs the suite with Command Line Tools alone (SDK pin + Swift Testing macro plugin path).
+
+### Changed
+- Test suite migrated from XCTest to Swift Testing (38 tests, same coverage plus the new image/data-file test), since XCTest no longer ships with Command Line Tools 27.x.
+
+### Fixed
+- Builds broken by the Nov 18 Command Line Tools 27.x update (no SwiftUIMacros compiler plugin): `build-app.sh` pins the 26 SDK while the plugin is missing.
 
 ## [v0.5.0] — 2026-10-06
 
