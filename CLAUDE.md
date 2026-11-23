@@ -80,5 +80,14 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   from the RTFD archive; normalize each via new `GistBuilder.normalizedImageFile`
   (PNG/JPEG/GIF/WebP pass, HEIC→JPEG, other decodable→PNG, else skipped).
   Multiple attachments become one gist with several images.
+- [ ] v0.7.2 fix: v0.7.1 still gisted the placeholder from real Notes (repro
+  2026-11-24, second user link) because **the Services system only writes the
+  types listed in NSSendTypes to the service pasteboard** — flat-rtfd was never
+  declared, so Notes was never asked for it (the synthetic rtfd test bypassed
+  that filter, which is why it passed). Declare `com.apple.flat-rtfd`; read
+  rich text via `readObjects(forClasses: [NSAttributedString.self])` with
+  attachment fallbacks (fileWrapper → contents → image); log the delivered
+  pasteboard types (`com.glennswest.macgist` subsystem) so the next pasteboard
+  mystery is readable from `log show`.
 - [ ] Later: optional Finder Sync extension for a top-level context-menu item (needs a signing identity)
 - [ ] Later: configurable lifetime in the menu
