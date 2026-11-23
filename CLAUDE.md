@@ -66,5 +66,12 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   text). TIFF converted to PNG. Also covers "Copy to Gist from Clipboard" for
   copied/screenshotted images. Plus the CLT 27.x build/test recovery (SDK pin,
   Swift Testing migration) that unblocked shipping it.
+- [ ] v0.7.0: **HEIC is never served** (owner, 2026-11-24: "convert to jpeg
+  between, we never pass heic"). A `.heic`/`.heif` Finder item is transcoded to
+  JPEG (ImageIO, quality 0.9, metadata/orientation kept) into the gist temp dir
+  instead of being served in place; `public.heic` pasteboard data likewise →
+  JPEG; `public.heic`/`public.heif` added to NSSendTypes. Rationale: only
+  Safari can decode HEIC, so Chrome/Firefox viewers got a broken inline image.
+  (Folders are zipped as-is; an archive's contents are not transcoded.)
 - [ ] Later: optional Finder Sync extension for a top-level context-menu item (needs a signing identity)
 - [ ] Later: configurable lifetime in the menu
