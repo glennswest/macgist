@@ -59,6 +59,22 @@ final class GistTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: file.path))
     }
 
+    func testBuildDataFileGist() throws {
+        let bytes = Data([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+        let g = try builder.build(dataFiles: [.init(name: "Image 2026-11-23 at 09.41.12.png", data: bytes),
+                                              .init(name: "empty.png", data: Data())],
+                                  baseURL: "http://h:1")
+        XCTAssertEqual(g.entries.map(\.name), ["Image 2026-11-23 at 09.41.12.png"])
+        XCTAssertEqual(g.entries[0].kind, .image)
+        XCTAssertEqual(g.entries[0].size, UInt64(bytes.count))
+        XCTAssertEqual(g.title, "Image 2026-11-23 at 09.41.12.png")
+        // Lives in the gist's temp dir, so it dies with the gist.
+        XCTAssertTrue(g.entries[0].fileURL.path.hasPrefix(g.tempDir.path))
+        XCTAssertEqual(g.sources, [g.entries[0].fileURL])
+        g.cleanUp()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: g.entries[0].fileURL.path))
+    }
+
     func testDuplicateNamesAreUniqued() throws {
         let a = try write("x/a.txt", Data("1".utf8))
         let b = try write("y/a.txt", Data("2".utf8))

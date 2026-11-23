@@ -41,13 +41,22 @@ public struct GistBuilder: Sendable {
         public init(name: String, text: String) { self.name = name; self.text = text }
     }
 
+    /// In-memory bytes with no backing file (e.g. an image off the pasteboard).
+    /// Written into the gist's temp dir, so it lives and dies with the gist.
+    public struct DataFile: Sendable {
+        public var name: String
+        public var data: Data
+        public init(name: String, data: Data) { self.name = name; self.data = data }
+    }
+
     /// Blocking: zipping a large folder can take a while. Snippets come first on
-    /// the page, then files in selection order.
-    public func build(title: String? = nil, snippets: [Snippet] = [], files urls: [URL] = [],
-                      baseURL: String, now: Date = Date()) throws -> Gist {
+    /// the page, then data files, then files in selection order.
+    public func build(title: String? = nil, snippets: [Snippet] = [], dataFiles: [DataFile] = [],
+                      files urls: [URL] = [], baseURL: String, now: Date = Date()) throws -> Gist {
         let snippets = snippets.filter { !$0.text.isEmpty }
+        let dataFiles = dataFiles.filter { !$0.data.isEmpty }
         let items = urls.map { $0.standardizedFileURL }
-        guard !snippets.isEmpty || !items.isEmpty else { throw GistBuilderError.nothingToShare }
+        guard !snippets.isEmpty || !dataFiles.isEmpty || !items.isEmpty else { throw GistBuilderError.nothingToShare }
         let token = GistStore.makeToken()
         let dir = tempRoot.appendingPathComponent(token, isDirectory: true)
         do {
@@ -73,6 +82,15 @@ public struct GistBuilder: Sendable {
                 try Data(snip.text.utf8).write(to: file)
                 entries.append(try GistEntry(name: name, fileURL: file, inlineLimit: inlineLimit))
             }
+            for (i, blob) in dataFiles.enumerated() {
+                let raw = blob.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "/", with: "-")
+                let name = unique(raw.isEmpty ? "file.bin" : raw)
+                let file = dir.appendingPathComponent("data/\(i)", isDirectory: true).appendingPathComponent(name)
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try blob.data.write(to: file)
+                entries.append(try GistEntry(name: name, fileURL: file, inlineLimit: inlineLimit))
+            }
             for item in items {
                 if isDirectory(item) {
                     let zip = try Zipper.zip([item], to: dir.appendingPathComponent("folders/\(UUID().uuidString)", isDirectory: true)
@@ -85,8 +103,8 @@ public struct GistBuilder: Sendable {
 
             let explicit = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let derived = entries.count == 1 ? entries[0].name : "\(entries[0].name) + \(entries.count - 1) more"
-            // "Download all" zips the snippets' temp files plus the original Finder items.
-            let sources = entries.prefix(snippets.count).map(\.fileURL) + items
+            // "Download all" zips the snippets' and data files' temp files plus the original Finder items.
+            let sources = entries.prefix(snippets.count + dataFiles.count).map(\.fileURL) + items
             return Gist(token: token, title: explicit.isEmpty ? derived : explicit, entries: entries, sources: sources,
                         link: "\(baseURL)/g/\(token)", created: now, expires: now.addingTimeInterval(lifetime), tempDir: dir)
         } catch {

@@ -62,6 +62,9 @@
 			<array>
 				<string>public.utf8-plain-text</string>
 				<string>NSStringPboardType</string>
+				<string>public.png</string>
+				<string>public.tiff</string>
+				<string>public.jpeg</string>
 			</array>
 		</dict>
 	</array>

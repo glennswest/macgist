@@ -191,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     /// the selected text. Two services with the same title collide, so it's one.
     @objc func copyToGist(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString>?) {
         if !share(from: pboard) {
-            error?.pointee = "Nothing to share: select some text or files." as NSString
+            error?.pointee = "Nothing to share: select some text, an image, or files." as NSString
         }
     }
 
@@ -200,12 +200,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private func share(from pboard: NSPasteboard) -> Bool {
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             share(files: urls)
-        } else if let text = pboard.string(forType: .string), !text.isEmpty {
+            return true
+        }
+        let text = pboard.string(forType: .string) ?? ""
+        // A photo selected in Notes (or other rich text) has image data, and its only
+        // "text" is the attachment placeholder U+FFFC — so images win unless there is real text.
+        let meaningful = text.unicodeScalars.contains {
+            !CharacterSet.whitespacesAndNewlines.contains($0) && $0 != "\u{FFFC}"
+        }
+        if !meaningful, let image = imageFile(from: pboard) {
+            share(image: image)
+        } else if !text.isEmpty {
             share(text: text)
         } else {
             return false
         }
         return true
+    }
+
+    /// PNG and JPEG pass through as-is; anything else (TIFF from Notes, PDF-backed
+    /// images) is converted to PNG.
+    private func imageFile(from pboard: NSPasteboard) -> GistBuilder.DataFile? {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        let stamp = df.string(from: Date())
+        if let d = pboard.data(forType: .png) {
+            return .init(name: "Image \(stamp).png", data: d)
+        }
+        if let d = pboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) {
+            return .init(name: "Image \(stamp).jpg", data: d)
+        }
+        let tiff = pboard.data(forType: .tiff) ?? NSImage(pasteboard: pboard)?.tiffRepresentation
+        guard let tiff, let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return nil }
+        return .init(name: "Image \(stamp).png", data: png)
     }
 
     // MARK: - Sharing
@@ -223,6 +251,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     private func share(text: String) {
         finish(Result { try builder.build(snippets: [.init(name: "snippet.txt", text: text)], baseURL: baseURL) })
+    }
+
+    private func share(image: GistBuilder.DataFile) {
+        finish(Result { try builder.build(dataFiles: [image], baseURL: baseURL) })
     }
 
     private func finish(_ result: Result<Gist, Error>) {
@@ -412,7 +444,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     @objc private func gistFromClipboard() {
         if !share(from: .general) {
-            notify("Clipboard is empty", "Copy some text or files first.")
+            notify("Clipboard is empty", "Copy some text, an image, or files first.")
         }
     }
 
