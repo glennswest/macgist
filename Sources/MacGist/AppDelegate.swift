@@ -1,8 +1,11 @@
 import AppKit
 import MacGistCore
+import os
 import ServiceManagement
 import SwiftUI
 import UserNotifications
+
+let shareLog = Logger(subsystem: "com.glennswest.macgist", category: "share")
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
@@ -198,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     /// Files win over text: Finder also puts the file names on the pasteboard as text.
     @discardableResult
     private func share(from pboard: NSPasteboard) -> Bool {
+        shareLog.info("share: pasteboard types \(pboard.types?.map(\.rawValue) ?? [], privacy: .public)")
         if let urls = pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
             share(files: urls)
             return true
@@ -238,30 +242,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
             }
         }
         // A Notes photo selection carries no image types at all: only flat
-        // RTFD with the photo as an embedded attachment.
-        if let d = pboard.data(forType: .rtfd) {
-            let attached = Self.rtfdImages(from: d)
-            if !attached.isEmpty { return attached }
+        // RTFD with the photo as an embedded attachment. readObjects also
+        // covers the other rich-text flavors an app may deliver instead.
+        var rich = (pboard.readObjects(forClasses: [NSAttributedString.self]) as? [NSAttributedString]) ?? []
+        if rich.isEmpty, let d = pboard.data(forType: .rtfd),
+           let s = try? NSAttributedString(data: d, options: [.documentType: NSAttributedString.DocumentType.rtfd],
+                                           documentAttributes: nil) {
+            rich = [s]
         }
+        let attached = rich.flatMap { Self.attachmentImages(in: $0, stamp: stamp) }
+        if !attached.isEmpty { return attached }
         let tiff = pboard.data(forType: .tiff) ?? NSImage(pasteboard: pboard)?.tiffRepresentation
         guard let tiff, let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else { return [] }
         return [.init(name: "Image \(stamp).png", data: png)]
     }
 
-    /// Image attachments inside a flat-RTFD archive (what Notes puts on the
-    /// pasteboard for a photo selection), normalized for the browser.
-    static func rtfdImages(from data: Data) -> [GistBuilder.DataFile] {
-        guard let attr = try? NSAttributedString(data: data,
-                                                 options: [.documentType: NSAttributedString.DocumentType.rtfd],
-                                                 documentAttributes: nil) else { return [] }
+    /// Image attachments inside rich text (what Notes puts on the pasteboard
+    /// for a photo selection), normalized for the browser. Attachments carry
+    /// their bytes in a file wrapper, in `contents`, or only as an NSImage,
+    /// depending on the producing app.
+    static func attachmentImages(in attr: NSAttributedString, stamp: String) -> [GistBuilder.DataFile] {
         var out: [GistBuilder.DataFile] = []
         attr.enumerateAttribute(.attachment, in: NSRange(location: 0, length: attr.length)) { value, _, _ in
-            guard let a = value as? NSTextAttachment, let fw = a.fileWrapper, fw.isRegularFile,
-                  let bytes = fw.regularFileContents, !bytes.isEmpty,
-                  let file = GistBuilder.normalizedImageFile(name: fw.preferredFilename ?? fw.filename ?? "image", data: bytes)
-            else { return }
-            out.append(file)
+            guard let a = value as? NSTextAttachment else { return }
+            let name = a.fileWrapper?.preferredFilename ?? a.fileWrapper?.filename ?? "Image \(stamp)"
+            if let bytes = a.fileWrapper?.regularFileContents ?? a.contents, !bytes.isEmpty,
+               let file = GistBuilder.normalizedImageFile(name: name, data: bytes) {
+                out.append(file)
+            } else if let tiff = a.image?.tiffRepresentation,
+                      let file = GistBuilder.normalizedImageFile(name: name + ".tiff", data: tiff) {
+                out.append(file)
+            } else {
+                shareLog.info("share: skipped attachment \(name, privacy: .public) (no usable bytes)")
+            }
         }
         return out
     }
