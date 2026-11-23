@@ -51,5 +51,12 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   Menu status computed live; "Copy Link via <other address>" for multi-homed Macs; links use
   the current address, not the one at creation.
 - [x] Public (v0.5.0): history squashed to one commit, issue #1 genericized. Inbox default scope = any RFC 1918 network (owner has many 192.168.x subnets).
+- [ ] v0.6.0: **gist images from the pasteboard** (photos in Notes, copied images
+  anywhere). Service declares image send types (`public.png`/`public.tiff`/`public.jpeg`)
+  in Info.plist; `GistBuilder` gains `DataFile` (in-memory bytes written into the
+  gist's temp dir, like snippets); `share(from:)` takes image data when the
+  pasteboard has no real text (a Notes photo selection carries only U+FFFC as
+  text). TIFF converted to PNG. Also covers "Copy to Gist from Clipboard" for
+  copied/screenshotted images.
 - [ ] Later: optional Finder Sync extension for a top-level context-menu item (needs a signing identity)
 - [ ] Later: configurable lifetime in the menu
