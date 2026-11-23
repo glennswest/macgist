@@ -110,6 +110,9 @@ Notes:
 - **Images you select or copy** (a photo in Notes, a screenshot on the
   clipboard) become `Image <date>.png` (PNG and JPEG keep their format,
   anything else is converted to PNG) and are shown inline on the page.
+- **HEIC is never served.** A `.heic` photo — shared from Finder or copied —
+  is converted to JPEG first (metadata and orientation kept), because only
+  Safari can display HEIC in the browser. Folders are zipped untouched.
 
 ## Receiving: network → Mac
 
