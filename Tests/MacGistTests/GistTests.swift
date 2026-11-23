@@ -1,5 +1,8 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import MacGistCore
 
 @Suite final class GistTests {
@@ -74,6 +77,33 @@ import Testing
         #expect(g.sources == [g.entries[0].fileURL])
         g.cleanUp()
         #expect(!FileManager.default.fileExists(atPath: g.entries[0].fileURL.path))
+    }
+
+    @Test func heicIsConvertedToJPEGAndNeverServed() throws {
+        let heic = dir.appendingPathComponent("photo.heic")
+        let ctx = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                         space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        let image = try #require(ctx.makeImage())
+        let dest = try #require(CGImageDestinationCreateWithURL(heic as CFURL, UTType.heic.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, image, nil)
+        try #require(CGImageDestinationFinalize(dest))
+
+        let g = try builder.build(files: [heic], baseURL: "http://h:1")
+        #expect(g.entries.map(\.name) == ["photo.jpg"])
+        #expect(g.entries[0].kind == .image)
+        #expect(g.entries[0].fileURL.path.hasPrefix(g.tempDir.path))
+        // "Download all" gets the JPEG too, not the original HEIC.
+        #expect(g.sources == [g.entries[0].fileURL])
+        let head = try Data(contentsOf: g.entries[0].fileURL).prefix(3)
+        #expect(head == Data([0xff, 0xd8, 0xff]))
+        g.cleanUp()
+        #expect(FileManager.default.fileExists(atPath: heic.path))
+
+        #expect(GistBuilder.jpegData(fromImageData: try Data(contentsOf: heic))?.prefix(3) == Data([0xff, 0xd8, 0xff]))
+        #expect(GistBuilder.jpegData(fromImageData: Data("not an image".utf8)) == nil)
     }
 
     @Test func duplicateNamesAreUniqued() throws {

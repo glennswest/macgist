@@ -230,6 +230,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         if let d = pboard.data(forType: NSPasteboard.PasteboardType("public.jpeg")) {
             return .init(name: "Image \(stamp).jpg", data: d)
         }
+        for heic in ["public.heic", "public.heif"] {
+            if let d = pboard.data(forType: NSPasteboard.PasteboardType(heic)),
+               let jpg = GistBuilder.jpegData(fromImageData: d) {
+                return .init(name: "Image \(stamp).jpg", data: jpg)
+            }
+        }
         let tiff = pboard.data(forType: .tiff) ?? NSImage(pasteboard: pboard)?.tiffRepresentation
         guard let tiff, let rep = NSBitmapImageRep(data: tiff),
               let png = rep.representation(using: .png, properties: [:]) else { return nil }

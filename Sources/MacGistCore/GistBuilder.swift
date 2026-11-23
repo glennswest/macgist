@@ -1,13 +1,17 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 public enum GistBuilderError: LocalizedError {
     case nothingToShare
     case zipFailed(String)
+    case heicConversionFailed(String)
 
     public var errorDescription: String? {
         switch self {
         case .nothingToShare: return "Nothing to share."
         case .zipFailed(let msg): return "Could not zip: \(msg)"
+        case .heicConversionFailed(let name): return "Could not convert \(name) to JPEG."
         }
     }
 }
@@ -91,20 +95,33 @@ public struct GistBuilder: Sendable {
                 try blob.data.write(to: file)
                 entries.append(try GistEntry(name: name, fileURL: file, inlineLimit: inlineLimit))
             }
+            var itemSources: [URL] = []
             for item in items {
                 if isDirectory(item) {
                     let zip = try Zipper.zip([item], to: dir.appendingPathComponent("folders/\(UUID().uuidString)", isDirectory: true)
                         .appendingPathComponent(item.lastPathComponent + ".zip"))
                     entries.append(try GistEntry(name: unique(item.lastPathComponent + ".zip"), fileURL: zip, inlineLimit: inlineLimit))
+                    itemSources.append(item)
+                } else if Self.isHEIC(item) {
+                    // HEIC is never served: only Safari can decode it, so other
+                    // browsers would show a broken inline image.
+                    let name = unique((item.lastPathComponent as NSString).deletingPathExtension + ".jpg")
+                    let jpg = dir.appendingPathComponent("heic/\(UUID().uuidString)", isDirectory: true).appendingPathComponent(name)
+                    try FileManager.default.createDirectory(at: jpg.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try Self.transcodeHEICToJPEG(item, to: jpg)
+                    entries.append(try GistEntry(name: name, fileURL: jpg, inlineLimit: inlineLimit))
+                    itemSources.append(jpg)
                 } else {
                     entries.append(try GistEntry(name: unique(item.lastPathComponent), fileURL: item, inlineLimit: inlineLimit))
+                    itemSources.append(item)
                 }
             }
 
             let explicit = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             let derived = entries.count == 1 ? entries[0].name : "\(entries[0].name) + \(entries.count - 1) more"
-            // "Download all" zips the snippets' and data files' temp files plus the original Finder items.
-            let sources = entries.prefix(snippets.count + dataFiles.count).map(\.fileURL) + items
+            // "Download all" zips the snippets' and data files' temp files plus the
+            // Finder items (the converted JPEG, not the original, for HEIC).
+            let sources = entries.prefix(snippets.count + dataFiles.count).map(\.fileURL) + itemSources
             return Gist(token: token, title: explicit.isEmpty ? derived : explicit, entries: entries, sources: sources,
                         link: "\(baseURL)/g/\(token)", created: now, expires: now.addingTimeInterval(lifetime), tempDir: dir)
         } catch {
@@ -116,6 +133,37 @@ public struct GistBuilder: Sendable {
     private func isDirectory(_ url: URL) -> Bool {
         var dir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &dir) && dir.boolValue
+    }
+
+    public static func isHEIC(_ url: URL) -> Bool {
+        ["heic", "heif"].contains(url.pathExtension.lowercased())
+    }
+
+    /// Copies the first image from `src` into a JPEG at `out`, keeping its
+    /// metadata (orientation, EXIF) via `CGImageDestinationAddImageFromSource`.
+    public static func transcodeHEICToJPEG(_ src: URL, to out: URL, quality: Double = 0.9) throws {
+        guard let source = CGImageSourceCreateWithURL(src as CFURL, nil), CGImageSourceGetCount(source) > 0,
+              let dest = CGImageDestinationCreateWithURL(out as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {
+            throw GistBuilderError.heicConversionFailed(src.lastPathComponent)
+        }
+        CGImageDestinationAddImageFromSource(dest, source, 0,
+            [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else {
+            try? FileManager.default.removeItem(at: out)
+            throw GistBuilderError.heicConversionFailed(src.lastPathComponent)
+        }
+    }
+
+    /// In-memory variant for pasteboard image data. Returns nil when the data
+    /// is not a decodable image.
+    public static func jpegData(fromImageData data: Data, quality: Double = 0.9) -> Data? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil), CGImageSourceGetCount(source) > 0 else { return nil }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(dest, source, 0,
+            [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { return nil }
+        return out as Data
     }
 }
 

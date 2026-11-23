@@ -65,6 +65,8 @@
 				<string>public.png</string>
 				<string>public.tiff</string>
 				<string>public.jpeg</string>
+				<string>public.heic</string>
+				<string>public.heif</string>
 			</array>
 		</dict>
 	</array>
