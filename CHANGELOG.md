@@ -3,6 +3,11 @@
 ## [Unreleased]
 <!-- New unreleased changes go here -->
 
+## [v0.7.2] — 2026-11-24
+
+### Fixed
+- The v0.7.1 Notes fix never ran against real Notes: the Services system only writes the types declared in `NSSendTypes` to the service pasteboard, and `com.apple.flat-rtfd` wasn't declared, so Notes was never asked for the RTFD that carries the photo. It is now declared; rich text is read via `readObjects` (covering other flavors too), attachments without a file wrapper fall back to `contents` or the attachment image, and each service invocation logs the delivered pasteboard types (subsystem `com.glennswest.macgist`) for future diagnosis.
+
 ## [v0.7.1] — 2026-11-24
 
 ### Fixed
