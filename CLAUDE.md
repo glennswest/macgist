@@ -80,7 +80,7 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   from the RTFD archive; normalize each via new `GistBuilder.normalizedImageFile`
   (PNG/JPEG/GIF/WebP pass, HEIC→JPEG, other decodable→PNG, else skipped).
   Multiple attachments become one gist with several images.
-- [ ] v0.7.2 fix: v0.7.1 still gisted the placeholder from real Notes (repro
+- [x] v0.7.2 fix: v0.7.1 still gisted the placeholder from real Notes (repro
   2026-11-24, second user link) because **the Services system only writes the
   types listed in NSSendTypes to the service pasteboard** — flat-rtfd was never
   declared, so Notes was never asked for it (the synthetic rtfd test bypassed
