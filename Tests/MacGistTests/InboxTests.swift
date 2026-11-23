@@ -1,95 +1,101 @@
-import XCTest
+import Foundation
+import Testing
 @testable import MacGistCore
 
-final class InboxUnitTests: XCTestCase {
-    func testInboxRoutes() {
-        XCTAssertEqual(HTTP.route("/in/tok"), .inbox(token: "tok", item: nil))
-        XCTAssertEqual(HTTP.route("/in/tok/"), .inbox(token: "tok", item: nil))
-        XCTAssertEqual(HTTP.route("/in/tok/ping"), .inbox(token: "tok", item: "ping"))
-        XCTAssertEqual(HTTP.route("/in/tok/clipboard?title=hi"), .inbox(token: "tok", item: "clipboard"))
-        XCTAssertEqual(HTTP.route("/in/tok/a%20b.txt"), .inbox(token: "tok", item: "a b.txt"))
-        XCTAssertEqual(HTTP.route("/in"), .inbox(token: nil, item: nil))
-        XCTAssertEqual(HTTP.route("/in/tok/a/b"), .inbox(token: nil, item: nil))
-        XCTAssertEqual(HTTP.query("/in/t/clipboard?title=Build%20log&x"), ["title": "Build log", "x": ""])
+@Suite struct InboxUnitTests {
+    @Test func inboxRoutes() {
+        #expect(HTTP.route("/in/tok") == .inbox(token: "tok", item: nil))
+        #expect(HTTP.route("/in/tok/") == .inbox(token: "tok", item: nil))
+        #expect(HTTP.route("/in/tok/ping") == .inbox(token: "tok", item: "ping"))
+        #expect(HTTP.route("/in/tok/clipboard?title=hi") == .inbox(token: "tok", item: "clipboard"))
+        #expect(HTTP.route("/in/tok/a%20b.txt") == .inbox(token: "tok", item: "a b.txt"))
+        #expect(HTTP.route("/in") == .inbox(token: nil, item: nil))
+        #expect(HTTP.route("/in/tok/a/b") == .inbox(token: nil, item: nil))
+        #expect(HTTP.query("/in/t/clipboard?title=Build%20log&x") == ["title": "Build log", "x": ""])
     }
 
-    func testSanitizeFilename() {
-        XCTAssertEqual(HTTP.sanitizeFilename("report.pdf"), "report.pdf")
-        XCTAssertEqual(HTTP.sanitizeFilename("../../etc/passwd"), "passwd")
-        XCTAssertEqual(HTTP.sanitizeFilename("..\\\\x\\\\y.txt"), "y.txt")
-        XCTAssertEqual(HTTP.sanitizeFilename(".hidden"), "hidden")
-        XCTAssertEqual(HTTP.sanitizeFilename("a\u{0}b:c\nd"), "abcd")
-        XCTAssertNil(HTTP.sanitizeFilename(".."))
-        XCTAssertNil(HTTP.sanitizeFilename("/"))
-        XCTAssertNil(HTTP.sanitizeFilename(""))
+    @Test func sanitizeFilename() {
+        #expect(HTTP.sanitizeFilename("report.pdf") == "report.pdf")
+        #expect(HTTP.sanitizeFilename("../../etc/passwd") == "passwd")
+        #expect(HTTP.sanitizeFilename("..\\\\x\\\\y.txt") == "y.txt")
+        #expect(HTTP.sanitizeFilename(".hidden") == "hidden")
+        #expect(HTTP.sanitizeFilename("a\u{0}b:c\nd") == "abcd")
+        #expect(HTTP.sanitizeFilename("..") == nil)
+        #expect(HTTP.sanitizeFilename("/") == nil)
+        #expect(HTTP.sanitizeFilename("") == nil)
         let long = String(repeating: "x", count: 300) + ".log"
-        XCTAssertEqual(HTTP.sanitizeFilename(long)?.count, 194)
+        #expect(HTTP.sanitizeFilename(long)?.count == 194)
     }
 
-    func testChunkedDecoder() throws {
+    @Test func chunkedDecoder() throws {
         let wire = Data("5\r\nhello\r\n6;ext=1\r\n world\r\n0\r\nTrailer: x\r\n\r\nGARBAGE".utf8)
         // Byte-at-a-time to cover every state boundary.
         var d = ChunkedDecoder()
         var out = Data()
         for b in wire { out += try d.feed(Data([b])) }
-        XCTAssertEqual(String(decoding: out, as: UTF8.self), "hello world")
-        XCTAssertTrue(d.isDone)
+        #expect(String(decoding: out, as: UTF8.self) == "hello world")
+        #expect(d.isDone)
 
         var whole = ChunkedDecoder()
-        XCTAssertEqual(try whole.feed(wire), Data("hello world".utf8))
+        let decoded = try whole.feed(wire)
+        #expect(decoded == Data("hello world".utf8))
 
-        var bad = ChunkedDecoder()
-        XCTAssertThrowsError(try bad.feed(Data("zz\r\n".utf8)))
-        var bad2 = ChunkedDecoder()
-        XCTAssertThrowsError(try bad2.feed(Data("2\r\nabX\r\n".utf8)))
+        #expect(throws: (any Error).self) {
+            var bad = ChunkedDecoder()
+            _ = try bad.feed(Data("zz\r\n".utf8))
+        }
+        #expect(throws: (any Error).self) {
+            var bad2 = ChunkedDecoder()
+            _ = try bad2.feed(Data("2\r\nabX\r\n".utf8))
+        }
     }
 
-    func testSubnets() {
+    @Test func subnets() {
         let s = Subnet(cidr: "192.168.5.0/24")!
-        XCTAssertEqual(s.description, "192.168.5.0/24")
-        XCTAssertTrue(s.contains(Subnet.parseIPv4("192.168.5.20")!))
-        XCTAssertFalse(s.contains(Subnet.parseIPv4("192.168.9.1")!))
-        XCTAssertEqual(Subnet.parseIPv4("::ffff:192.168.5.1"), Subnet.parseIPv4("192.168.5.1"))
-        XCTAssertEqual(Subnet.parseIPv4("192.168.5.1%en0"), Subnet.parseIPv4("192.168.5.1"))
-        XCTAssertNil(Subnet.parseIPv4("fe80::1"))
-        XCTAssertNil(Subnet(cidr: "1.2.3.4/33"))
-        XCTAssertEqual(Subnet(cidr: "10.1.2.3")?.description, "10.1.2.3/32")
-        XCTAssertFalse(LocalAddress.localSubnets().isEmpty)
+        #expect(s.description == "192.168.5.0/24")
+        #expect(s.contains(Subnet.parseIPv4("192.168.5.20")!))
+        #expect(!s.contains(Subnet.parseIPv4("192.168.9.1")!))
+        #expect(Subnet.parseIPv4("::ffff:192.168.5.1") == Subnet.parseIPv4("192.168.5.1"))
+        #expect(Subnet.parseIPv4("192.168.5.1%en0") == Subnet.parseIPv4("192.168.5.1"))
+        #expect(Subnet.parseIPv4("fe80::1") == nil)
+        #expect(Subnet(cidr: "1.2.3.4/33") == nil)
+        #expect(Subnet(cidr: "10.1.2.3")?.description == "10.1.2.3/32")
+        #expect(!LocalAddress.localSubnets().isEmpty)
     }
 
-    func testAuthorizeAndAllow() {
+    @Test func authorizeAndAllow() {
         let inbox = Inbox(root: URL(fileURLWithPath: "/nonexistent"), token: "abcdefghijklmnopqrstuv",
                           subnets: [Subnet(cidr: "192.168.5.0/24")!]) { _ in }
-        XCTAssertTrue(inbox.authorize("abcdefghijklmnopqrstuv"))
-        XCTAssertFalse(inbox.authorize("abcdefghijklmnopqrstuX"))
-        XCTAssertFalse(inbox.authorize("abc"))
-        XCTAssertFalse(inbox.authorize(""))
-        XCTAssertTrue(inbox.allows("192.168.5.20"))
-        XCTAssertTrue(inbox.allows("::ffff:192.168.5.20"))
-        XCTAssertTrue(inbox.allows("127.0.0.1"))
-        XCTAssertFalse(inbox.allows("192.168.9.5"))
-        XCTAssertFalse(inbox.allows("8.8.8.8"))
-        XCTAssertFalse(inbox.allows("fe80::1"))
+        #expect(inbox.authorize("abcdefghijklmnopqrstuv"))
+        #expect(!inbox.authorize("abcdefghijklmnopqrstuX"))
+        #expect(!inbox.authorize("abc"))
+        #expect(!inbox.authorize(""))
+        #expect(inbox.allows("192.168.5.20"))
+        #expect(inbox.allows("::ffff:192.168.5.20"))
+        #expect(inbox.allows("127.0.0.1"))
+        #expect(!inbox.allows("192.168.9.5"))
+        #expect(!inbox.allows("8.8.8.8"))
+        #expect(!inbox.allows("fe80::1"))
     }
 
-    func testUniqueNames() throws {
+    @Test func uniqueNames() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("macgist-u-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
         try Data().write(to: dir.appendingPathComponent("a.txt"))
         try Data().write(to: dir.appendingPathComponent("a (2).txt"))
-        XCTAssertEqual(Inbox.unique("a.txt", in: dir).lastPathComponent, "a (3).txt")
-        XCTAssertEqual(Inbox.unique("b", in: dir).lastPathComponent, "b")
+        #expect(Inbox.unique("a.txt", in: dir).lastPathComponent == "a (3).txt")
+        #expect(Inbox.unique("b", in: dir).lastPathComponent == "b")
     }
 }
 
 /// End-to-end inbox tests: real server on loopback, driven with curl.
-final class InboxServerTests: XCTestCase {
+@Suite final class InboxServerTests {
     let token = "TESTtoken_0123456789ab"
-    var root: URL!
-    var server: HTTPServer!
-    var inbox: Inbox!
-    var port: UInt16 = 0
+    let root: URL
+    let server: HTTPServer
+    let inbox: Inbox
+    let port: UInt16
     let got = Got()
 
     final class Got: @unchecked Sendable {
@@ -99,19 +105,19 @@ final class InboxServerTests: XCTestCase {
         var all: [Received] { lock.withLock { items } }
     }
 
-    override func setUpWithError() throws {
+    init() throws {
         root = FileManager.default.temporaryDirectory.appendingPathComponent("macgist-in-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         let got = self.got
         inbox = Inbox(root: root, token: token, maxFileBytes: 4 << 20) { got.add($0) }
         port = UInt16.random(in: 40000...60000)
         server = try HTTPServer(port: port, store: GistStore(), inbox: inbox)
-        let ready = expectation(description: "ready")
-        server.start { if case .ready = $0 { ready.fulfill() } }
-        wait(for: [ready], timeout: 5)
+        let ready = DispatchSemaphore(value: 0)
+        server.start { if case .ready = $0 { ready.signal() } }
+        guard ready.wait(timeout: .now() + 5) == .success else { throw ServerNotReady() }
     }
 
-    override func tearDownWithError() throws {
+    deinit {
         server.stop()
         try? FileManager.default.removeItem(at: root)
     }
@@ -135,97 +141,100 @@ final class InboxServerTests: XCTestCase {
         return (code, lines.joined(separator: "\n"))
     }
 
-    func testPing() throws {
-        XCTAssertEqual(try curl(["\(base)/ping"]).0, 200)
+    @Test func ping() throws {
+        #expect(try curl(["\(base)/ping"]).0 == 200)
     }
 
-    func testClipboard() throws {
+    @Test func clipboard() throws {
         let (code, _) = try curl(["--data-binary", "@-", "-H", "Content-Type: text/plain", "\(base)/clipboard?title=Build%20log"],
                                  stdin: Data("héllo\nworld".utf8))
-        XCTAssertEqual(code, 204)
-        guard case .text(let t, let title) = got.all.first?.content else { return XCTFail("no text received") }
-        XCTAssertEqual(t, "héllo\nworld")
-        XCTAssertEqual(title, "Build log")
-        XCTAssertEqual(got.all.first?.sender, "localhost")
+        #expect(code == 204)
+        guard case .text(let t, let title) = got.all.first?.content else {
+            Issue.record("no text received")
+            return
+        }
+        #expect(t == "héllo\nworld")
+        #expect(title == "Build log")
+        #expect(got.all.first?.sender == "localhost")
     }
 
-    func testClipboardTooLarge() throws {
+    @Test func clipboardTooLarge() throws {
         let big = Data(repeating: 0x61, count: Int(Inbox.defaultClipboardLimit) + 1)
-        XCTAssertEqual(try curl(["--data-binary", "@-", "\(base)/clipboard"], stdin: big).0, 413)
-        XCTAssertTrue(got.all.isEmpty)
+        #expect(try curl(["--data-binary", "@-", "\(base)/clipboard"], stdin: big).0 == 413)
+        #expect(got.all.isEmpty)
     }
 
-    func testPutFileWithContentLength() throws {
+    @Test func putFileWithContentLength() throws {
         let src = root.appendingPathComponent("src.bin")
         let payload = Data((0..<2_000_000).map { UInt8($0 % 253) })
         try payload.write(to: src)
         let (code, body) = try curl(["-T", src.path, "\(base)/report%20final.bin"])
-        XCTAssertEqual(code, 201)
+        #expect(code == 201)
         let json = try JSONSerialization.jsonObject(with: Data(body.utf8)) as! [String: Any]
         let saved = URL(fileURLWithPath: json["saved"] as! String)
-        XCTAssertEqual(json["bytes"] as? Int, payload.count)
-        XCTAssertEqual(saved.lastPathComponent, "report final.bin")
-        XCTAssertEqual(saved.deletingLastPathComponent().lastPathComponent, "From localhost")
-        XCTAssertEqual(try Data(contentsOf: saved), payload)
+        #expect(json["bytes"] as? Int == payload.count)
+        #expect(saved.lastPathComponent == "report final.bin")
+        #expect(saved.deletingLastPathComponent().lastPathComponent == "From localhost")
+        #expect(try Data(contentsOf: saved) == payload)
 
         // Same name again: no overwrite.
         let (code2, body2) = try curl(["-T", src.path, "\(base)/report%20final.bin"])
-        XCTAssertEqual(code2, 201)
-        XCTAssertTrue(body2.contains("report final (2).bin"))
-        XCTAssertEqual(got.all.count, 2)
+        #expect(code2 == 201)
+        #expect(body2.contains("report final (2).bin"))
+        #expect(got.all.count == 2)
         // Partial files are cleaned up.
         let partials = try FileManager.default.contentsOfDirectory(atPath: root.appendingPathComponent(".macgist-incoming").path)
-        XCTAssertTrue(partials.isEmpty)
+        #expect(partials.isEmpty)
     }
 
-    func testPutChunkedFromStdin() throws {
+    @Test func putChunkedFromStdin() throws {
         let (code, body) = try curl(["-T", "-", "\(base)/notes.txt"], stdin: Data("streamed body".utf8))
-        XCTAssertEqual(code, 201)
+        #expect(code == 201)
         let json = try JSONSerialization.jsonObject(with: Data(body.utf8)) as! [String: Any]
-        XCTAssertEqual(try String(contentsOfFile: json["saved"] as! String), "streamed body")
+        #expect(try String(contentsOfFile: json["saved"] as! String) == "streamed body")
     }
 
-    func testFileTooLarge() throws {
+    @Test func fileTooLarge() throws {
         let src = root.appendingPathComponent("big.bin")
         try Data(count: 5 << 20).write(to: src)
-        XCTAssertEqual(try curl(["-T", src.path, "\(base)/big.bin"]).0, 413)
-        XCTAssertEqual(try curl(["-T", "-", "\(base)/big.bin"], stdin: Data(count: 5 << 20)).0, 413)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: root.appendingPathComponent("From localhost/big.bin").path))
+        #expect(try curl(["-T", src.path, "\(base)/big.bin"]).0 == 413)
+        #expect(try curl(["-T", "-", "\(base)/big.bin"], stdin: Data(count: 5 << 20)).0 == 413)
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("From localhost/big.bin").path))
     }
 
-    func testForbidden() throws {
+    @Test func forbidden() throws {
         let wrong = "http://127.0.0.1:\(port)/in/WRONGtoken_0123456789a"
-        XCTAssertEqual(try curl(["\(wrong)/ping"]).0, 403)
-        XCTAssertEqual(try curl(["--data-binary", "x", "\(wrong)/clipboard"]).0, 403)
-        XCTAssertEqual(try curl(["http://127.0.0.1:\(port)/in"]).0, 403)
-        XCTAssertEqual(try curl(["http://127.0.0.1:\(port)/in/\(token)/a/b"]).0, 403)
+        #expect(try curl(["\(wrong)/ping"]).0 == 403)
+        #expect(try curl(["--data-binary", "x", "\(wrong)/clipboard"]).0 == 403)
+        #expect(try curl(["http://127.0.0.1:\(port)/in"]).0 == 403)
+        #expect(try curl(["http://127.0.0.1:\(port)/in/\(token)/a/b"]).0 == 403)
         inbox.enabled = false
-        XCTAssertEqual(try curl(["\(base)/ping"]).0, 403)
-        XCTAssertTrue(got.all.isEmpty)
+        #expect(try curl(["\(base)/ping"]).0 == 403)
+        #expect(got.all.isEmpty)
     }
 
-    func testBadRequests() throws {
-        XCTAssertEqual(try curl(["-X", "PUT", "-H", "Content-Length:", "\(base)/x.txt"]).0, 411)
-        XCTAssertEqual(try curl(["--path-as-is", "-X", "PUT", "--data-binary", "x", "\(base)/.."]).0, 400)
-        XCTAssertEqual(try curl(["-X", "DELETE", "\(base)/x"]).0, 405)
+    @Test func badRequests() throws {
+        #expect(try curl(["-X", "PUT", "-H", "Content-Length:", "\(base)/x.txt"]).0 == 411)
+        #expect(try curl(["--path-as-is", "-X", "PUT", "--data-binary", "x", "\(base)/.."]).0 == 400)
+        #expect(try curl(["-X", "DELETE", "\(base)/x"]).0 == 405)
     }
 
-    func testSendPage() throws {
+    @Test func sendPage() throws {
         let (code, body) = try curl(["\(base)/"])
-        XCTAssertEqual(code, 200)
-        XCTAssertTrue(body.contains("Send to"))
-        XCTAssertTrue(body.contains("'/in/\(token)/'"))
+        #expect(code == 200)
+        #expect(body.contains("Send to"))
+        #expect(body.contains("'/in/\(token)/'"))
     }
 }
 
-final class PrivateRangeTests: XCTestCase {
-    func testPrivateRanges() {
+@Suite struct PrivateRangeTests {
+    @Test func privateRanges() {
         let inbox = Inbox(root: URL(fileURLWithPath: "/x"), token: "t", subnets: Subnet.privateRanges) { _ in }
         for ip in ["192.168.5.20", "192.168.10.5", "192.168.200.1", "10.1.2.3", "172.16.0.1", "172.31.255.254"] {
-            XCTAssertTrue(inbox.allows(ip), ip)
+            #expect(inbox.allows(ip), Comment(rawValue: ip))
         }
         for ip in ["172.32.0.1", "8.8.8.8", "100.64.0.1", "193.168.1.1"] {
-            XCTAssertFalse(inbox.allows(ip), ip)
+            #expect(!inbox.allows(ip), Comment(rawValue: ip))
         }
     }
 }

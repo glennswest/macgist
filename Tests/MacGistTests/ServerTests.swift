@@ -1,25 +1,28 @@
-import XCTest
+import Foundation
+import Testing
 @testable import MacGistCore
 
-/// End-to-end: a real server on a loopback port, fetched with URLSession.
-final class ServerTests: XCTestCase {
-    var dir: URL!
-    var store: GistStore!
-    var server: HTTPServer!
-    var port: UInt16 = 0
+struct ServerNotReady: Error {}
 
-    override func setUpWithError() throws {
+/// End-to-end: a real server on a loopback port, fetched with URLSession.
+@Suite final class ServerTests {
+    let dir: URL
+    let store: GistStore
+    let server: HTTPServer
+    let port: UInt16
+
+    init() throws {
         dir = FileManager.default.temporaryDirectory.appendingPathComponent("macgist-srv-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         store = GistStore()
         port = UInt16.random(in: 40000...60000)
         server = try HTTPServer(port: port, store: store)
-        let ready = expectation(description: "ready")
-        server.start { if case .ready = $0 { ready.fulfill() } }
-        wait(for: [ready], timeout: 5)
+        let ready = DispatchSemaphore(value: 0)
+        server.start { if case .ready = $0 { ready.signal() } }
+        guard ready.wait(timeout: .now() + 5) == .success else { throw ServerNotReady() }
     }
 
-    override func tearDownWithError() throws {
+    deinit {
         server.stop()
         try? FileManager.default.removeItem(at: dir)
     }
@@ -41,73 +44,73 @@ final class ServerTests: XCTestCase {
         return g
     }
 
-    func testPageRawDownloadRangeArchive() async throws {
+    @Test func pageRawDownloadRangeArchive() async throws {
         let g = try makeGist()
 
         let (s1, page, r1) = try await fetch("/g/\(g.token)", headers: ["Accept": "text/html"])
-        XCTAssertEqual(s1, 200)
-        XCTAssertEqual(r1.value(forHTTPHeaderField: "Content-Type"), "text/html; charset=utf-8")
+        #expect(s1 == 200)
+        #expect(r1.value(forHTTPHeaderField: "Content-Type") == "text/html; charset=utf-8")
         let html = String(decoding: page, as: UTF8.self)
-        XCTAssertTrue(html.contains("print(&#39;hi&#39;)"))
-        XCTAssertTrue(html.contains("Download all (.zip)"))
+        #expect(html.contains("print(&#39;hi&#39;)"))
+        #expect(html.contains("Download all (.zip)"))
 
         // curl-style request to a multi-file gist gets a URL listing.
         let (_, listing, _) = try await fetch("/g/\(g.token)", headers: ["Accept": "*/*"])
-        XCTAssertTrue(String(decoding: listing, as: UTF8.self).contains("/g/\(g.token)/raw/0/hello.py"))
+        #expect(String(decoding: listing, as: UTF8.self).contains("/g/\(g.token)/raw/0/hello.py"))
 
         let (s2, raw, r2) = try await fetch("/g/\(g.token)/raw/0/hello.py")
-        XCTAssertEqual(s2, 200)
-        XCTAssertEqual(String(decoding: raw, as: UTF8.self), "print('hi')\n")
-        XCTAssertEqual(r2.value(forHTTPHeaderField: "Content-Type"), "text/plain; charset=utf-8")
+        #expect(s2 == 200)
+        #expect(String(decoding: raw, as: UTF8.self) == "print('hi')\n")
+        #expect(r2.value(forHTTPHeaderField: "Content-Type") == "text/plain; charset=utf-8")
 
         let (s3, bin, r3) = try await fetch("/g/\(g.token)/dl/1/data.bin")
-        XCTAssertEqual(s3, 200)
-        XCTAssertEqual(bin, try Data(contentsOf: g.entries[1].fileURL))
-        XCTAssertTrue(r3.value(forHTTPHeaderField: "Content-Disposition")!.hasPrefix("attachment;"))
+        #expect(s3 == 200)
+        #expect(bin == (try Data(contentsOf: g.entries[1].fileURL)))
+        #expect(r3.value(forHTTPHeaderField: "Content-Disposition")?.hasPrefix("attachment;") == true)
 
         let (s4, part, r4) = try await fetch("/g/\(g.token)/dl/1/data.bin", headers: ["Range": "bytes=2999990-"])
-        XCTAssertEqual(s4, 206)
-        XCTAssertEqual(part.count, 10)
-        XCTAssertEqual(r4.value(forHTTPHeaderField: "Content-Range"), "bytes 2999990-2999999/3000000")
+        #expect(s4 == 206)
+        #expect(part.count == 10)
+        #expect(r4.value(forHTTPHeaderField: "Content-Range") == "bytes 2999990-2999999/3000000")
 
         let (s5, zip, _) = try await fetch("/g/\(g.token)/zip/x.zip")
-        XCTAssertEqual(s5, 200)
-        XCTAssertEqual(zip.prefix(2), Data("PK".utf8))
+        #expect(s5 == 200)
+        #expect(zip.prefix(2) == Data("PK".utf8))
 
-        XCTAssertGreaterThanOrEqual(store.lookup(g.token)!.hits, 3)
+        #expect(store.lookup(g.token)!.hits >= 3)
         g.cleanUp()
     }
 
-    func testSingleFileGistServesRawToCurl() async throws {
+    @Test func singleFileGistServesRawToCurl() async throws {
         let g = try GistBuilder(tempRoot: dir.appendingPathComponent("tmp"))
             .build(snippets: [.init(name: "a.txt", text: "just text")], baseURL: "x")
         store.add(g)
         let (s, body, _) = try await fetch("/g/\(g.token)", headers: ["Accept": "*/*"])
-        XCTAssertEqual(s, 200)
-        XCTAssertEqual(String(decoding: body, as: UTF8.self), "just text")
+        #expect(s == 200)
+        #expect(String(decoding: body, as: UTF8.self) == "just text")
         g.cleanUp()
     }
 
-    func testUnknownAndRevoked() async throws {
+    @Test func unknownAndRevoked() async throws {
         let (s1, _, _) = try await fetch("/g/nope")
-        XCTAssertEqual(s1, 404)
+        #expect(s1 == 404)
         let (s2, _, _) = try await fetch("/")
-        XCTAssertEqual(s2, 404)
+        #expect(s2 == 404)
 
         let g = try makeGist()
         store.remove(g.token)
         let (s3, body, _) = try await fetch("/g/\(g.token)", headers: ["Accept": "text/html"])
-        XCTAssertEqual(s3, 404)
-        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("This gist has expired"))
+        #expect(s3 == 404)
+        #expect(String(decoding: body, as: UTF8.self).contains("This gist has expired"))
         let (s4, _, _) = try await fetch("/g/\(g.token)/raw/0/hello.py")
-        XCTAssertEqual(s4, 404)
+        #expect(s4 == 404)
         g.cleanUp()
     }
 
-    func testOutOfRangeIndex() async throws {
+    @Test func outOfRangeIndex() async throws {
         let g = try makeGist()
         let (s, _, _) = try await fetch("/g/\(g.token)/raw/9/x")
-        XCTAssertEqual(s, 404)
+        #expect(s == 404)
         g.cleanUp()
     }
 }
