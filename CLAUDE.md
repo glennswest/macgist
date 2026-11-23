@@ -9,7 +9,14 @@ all) and expires after 15 minutes. LAN only, served by the app itself.
 ## Build exception
 This is a macOS app, so it builds **on the Mac** (the cross-project "build on
 dev" rule exists because those targets are Linux; this target is macOS).
-`scripts/build-app.sh` → `build/MacGist.app`; `scripts/install.sh` installs it.
+`scripts/build-app.sh` → `build/MacGist.app`; `scripts/install.sh` installs it;
+`scripts/test.sh` runs the tests.
+
+Command Line Tools 27.x (no Xcode on this Mac) ship **no XCTest** and **no
+SwiftUIMacros plugin**, so: tests are Swift Testing (not XCTest), build-app.sh
+pins the 26 SDK while the SwiftUI macro plugin is missing, and test.sh adds
+`-plugin-path …/plugins/testing` for the Testing macros. A bare `swift build`
+or `swift test` against the default (27.x) SDK fails on `@State`/`@Test`.
 
 ## Version
 Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
@@ -51,12 +58,13 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   Menu status computed live; "Copy Link via <other address>" for multi-homed Macs; links use
   the current address, not the one at creation.
 - [x] Public (v0.5.0): history squashed to one commit, issue #1 genericized. Inbox default scope = any RFC 1918 network (owner has many 192.168.x subnets).
-- [ ] v0.6.0: **gist images from the pasteboard** (photos in Notes, copied images
+- [x] v0.6.0: **gist images from the pasteboard** (photos in Notes, copied images
   anywhere). Service declares image send types (`public.png`/`public.tiff`/`public.jpeg`)
   in Info.plist; `GistBuilder` gains `DataFile` (in-memory bytes written into the
   gist's temp dir, like snippets); `share(from:)` takes image data when the
   pasteboard has no real text (a Notes photo selection carries only U+FFFC as
   text). TIFF converted to PNG. Also covers "Copy to Gist from Clipboard" for
-  copied/screenshotted images.
+  copied/screenshotted images. Plus the CLT 27.x build/test recovery (SDK pin,
+  Swift Testing migration) that unblocked shipping it.
 - [ ] Later: optional Finder Sync extension for a top-level context-menu item (needs a signing identity)
 - [ ] Later: configurable lifetime in the menu

@@ -68,8 +68,9 @@ again (from Spotlight or Finder) shows its **Settings** window.
 | Where | Do this |
 |---|---|
 | Any app with selectable text | Highlight text → right-click → **Services → Copy to Gist** |
+| A photo in Notes, or any selected image | Select the image → right-click → **Services → Copy to Gist** |
 | Finder | Select files and/or folders → right-click → **Services → Copy to Gist** |
-| Anything you've copied | Menu bar icon → **Copy to Gist from Clipboard** |
+| Anything you've copied, including images | Menu bar icon → **Copy to Gist from Clipboard** |
 | Terminal | `open -a MacGist file1 file2 …` |
 
 You get a notification and the link is on your clipboard:
@@ -106,6 +107,9 @@ Notes:
 - **Folders** are zipped when you share them.
 - **Files** are served from where they are, not copied, so edits within the 15 minutes show up.
 - **Text you highlight** becomes `snippet.txt`.
+- **Images you select or copy** (a photo in Notes, a screenshot on the
+  clipboard) become `Image <date>.png` (PNG and JPEG keep their format,
+  anything else is converted to PNG) and are shown inline on the page.
 
 ## Receiving: network → Mac
 
