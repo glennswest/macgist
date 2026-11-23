@@ -73,5 +73,12 @@ Single source: `VERSION` (stamped into `Info.plist` by `scripts/build-app.sh`).
   JPEG; `public.heic`/`public.heif` added to NSSendTypes. Rationale: only
   Safari can decode HEIC, so Chrome/Firefox viewers got a broken inline image.
   (Folders are zipped as-is; an archive's contents are not transcoded.)
+- [ ] v0.7.1 fix: a Notes photo selection puts **no** `public.png`/`tiff` on the
+  service pasteboard — only flat RTFD (`com.apple.flat-rtfd`) with the image as
+  an embedded attachment, plus U+FFFC as text — so 0.7.0 gisted the 3-byte
+  placeholder as `snippet.txt` (live repro 2026-11-24). Fix: extract attachments
+  from the RTFD archive; normalize each via new `GistBuilder.normalizedImageFile`
+  (PNG/JPEG/GIF/WebP pass, HEIC→JPEG, other decodable→PNG, else skipped).
+  Multiple attachments become one gist with several images.
 - [ ] Later: optional Finder Sync extension for a top-level context-menu item (needs a signing identity)
 - [ ] Later: configurable lifetime in the menu
